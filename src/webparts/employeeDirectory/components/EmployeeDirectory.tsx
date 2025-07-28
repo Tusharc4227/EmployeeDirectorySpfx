@@ -4,15 +4,27 @@ import type { IEmployeeDirectoryProps } from './IEmployeeDirectoryProps';
 // import { escape } from '@microsoft/sp-lodash-subset';
 import { getSP } from '../pnp';
 import { SPFI } from '@pnp/sp';
+import { DetailsList,IColumn } from '@fluentui/react';
 interface IEmployeeItem{
   Title:String,
-  Id:number
+  Id:number,
+  Email:String,
+  Department:String,
+  Designation:String,
+ // PhotoURL:Object
 }
 interface IEmployeeState{
   employees:IEmployeeItem[]
 }
 export default class EmployeeDirectory extends React.Component<IEmployeeDirectoryProps,IEmployeeState> {
   private sp : SPFI;
+  private empTableColumns : IColumn[] = [
+    {key:"col1",name:"Id",fieldName:"Id",minWidth:50,maxWidth:100,isResizable:true},
+    {key:"col2",name:"Title",fieldName:"Title",minWidth:50,maxWidth:100,isResizable:true,isFiltered:true},
+    {key:"col3",name:"Email",fieldName:"Email",minWidth:50,maxWidth:100,isResizable:true},
+    {key:"col4",name:"Department",fieldName:"Department",minWidth:50,maxWidth:100,isResizable:true},
+    //{key:"col5",name:"Photo",fieldName:"PhotoURL",minWidth:50,maxWidth:100,isResizable:true}
+  ]
   constructor(props:IEmployeeDirectoryProps){
     super(props);
     this.state={
@@ -20,14 +32,19 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
     }
     this.sp=getSP(props.context);
   }
-  public componentDidMount(): void {
-    this.getEmployeeDetails();
+  public async componentDidMount(): Promise<void> {
+    const employees =await this.getEmployeeDetails();
+    this.setState({employees:employees});
+    
   }
-  private getEmployeeDetails =  async (): Promise<void> => {
+  private getEmployeeDetails =  async (): Promise<IEmployeeItem[]> => {
     //const employees:IEmployeeItem[] = 
-    const items = await this.sp.web.lists.getByTitle('Employees').items.select("Id","Title","Email","Department","Designation","PhotoURL");
-    console.log(items);
-    //return employees
+    const items = await this.sp.web.lists.getByTitle('Employees').items
+                        //.select("Id","Title","Email","Department","Designation","PhotoURL")
+                        .top(100)();
+    console.log("items",items)
+    
+    return items
   }
   public render(): React.ReactElement<IEmployeeDirectoryProps> {
     
@@ -39,13 +56,15 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
       // userDisplayName,
       context
     } = this.props;
-    console.log("this",context)
+    const {employees}= this.state;
+    console.log("this",context,employees)
     return (
      <div>
       <h2>Employee Details</h2>
-      <ul>
-        {}
-      </ul>
+      <DetailsList
+        items={employees}
+        columns={this.empTableColumns}
+      />
      </div>
     );
   }
