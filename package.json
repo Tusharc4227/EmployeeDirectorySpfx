@@ -11,7 +11,7 @@
     "clean": "gulp clean",
     "test": "gulp test",
     "serve_maxheap": "node -e $env:NODE_OPTIONS='--max_old_space_size=4096' && gulp serve",
-    //"build_maxheap":$env:NODE_OPTIONS="--max_old_space_size=4096"
+    "build_maxheap":"$env:NODE_OPTIONS='--max_old_space_size=4096'",
     "check_heapsize" : "node -e \"console.log(v8.getHeapStatistics().heap_size_limit / 1024 / 1024 + ' MB')\" -r v8"
   },
   "dependencies": {
