@@ -72,9 +72,14 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
       this.employeeListRef.current.addEventListener('scroll', this.handleNativeScroll);
     }
   }
-  componentDidUpdate(prevProps: Readonly<IEmployeeDirectoryProps>, prevState: Readonly<IEmployeeState>, snapshot?: any): void {
+  async componentDidUpdate(prevProps: Readonly<IEmployeeDirectoryProps>, prevState: Readonly<IEmployeeState>, snapshot?: any): Promise<void> {
     if (prevState.filterOptions !== this.state.filterOptions) {
       console.log("Search Text Changed", this.state.filterOptions, typeof this.state.filterOptions);
+      this.clearSkipCount(); // Reset skip count when filter options change
+      const newEmployees = await this.getEmployeeDetails();
+      this.setState((prevState) => ({
+        employees: [...prevState.employees, ...newEmployees]
+      }));
       // this.filterEmployees();
     }
   }
@@ -137,7 +142,11 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
   private closePanel = (): void => {
     this.setState({ isPanelOpen: false });
   }
-  
+  private clearSkipCount = (): void => {
+    this.skipCount = 0; // Reset skip count
+   // this.setState({ employees: [] }); // Clear the current employee list
+    this.employeeListRef.current?.scrollTo({ top: 0 }); // Scroll to the top of the list
+  }    
   public render(): React.ReactElement<IEmployeeDirectoryProps> {
 
     // const {
@@ -202,6 +211,7 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
                   console.log("onSearch Text", newValue); 
                   this.setState((prevState) => ({
                     // searchText: newValue == null || newValue == "" ? undefined : newValue,
+                    employees: [],
                     filterOptions: [
                       ...(prevState.filterOptions || []),
                       { 
@@ -217,6 +227,7 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
                     console.log("onChange Text", newValue); 
                     this.setState((prevState => ({ 
                       // searchText: newValue ==null || newValue == ""?undefined:newValue 
+                      employees: [],
                       filterOptions: [
                         ...(prevState.filterOptions || []),
                         { 
