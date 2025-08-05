@@ -5,21 +5,29 @@ import type { IEmployeeDirectoryProps } from './IEmployeeDirectoryProps';
 import { getSP } from '../pnp';
 import { SPFI } from '@pnp/sp';
 import { DetailsList, IColumn, IconButton, Image, ImageFit, Panel, PrimaryButton, SearchBox } from '@fluentui/react';
+import { debounce } from '../utils';
 interface IEmployeeItem {
-  Title: String,
+  Title: string,
   Id: number,
-  Email: String,
-  Department: String,
-  Designation: String,
+  Email: string,
+  Department: string,
+  Designation: string,
   PhotoURL: Photo
 }
 interface Photo {
-  Description: String,
-  Url: String
+  Description: string,
+  Url: string
 }
 interface IEmployeeState {
   employees: IEmployeeItem[],
-  isPanelOpen?: boolean
+  isPanelOpen?: boolean,
+  // searchText?: string,
+  filterOptions?: filterItem[]
+}
+interface filterItem{
+  key:string,
+  value?:string
+  // type:string
 }
 export default class EmployeeDirectory extends React.Component<IEmployeeDirectoryProps, IEmployeeState> {
   private sp: SPFI;
@@ -27,7 +35,7 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
     { key: "col1", name: "Id", fieldName: "Id", minWidth: 50, maxWidth: 100, isResizable: true },
     {
       key: "col5", name: "Photo", fieldName: "PhotoURL", minWidth: 50, maxWidth: 100, isResizable: true, onRender: (item, index = 0) => {
-        console.log("Item", item);
+        // console.log("Item", item);
         return (
           <Image
             src={"https://picsum.photos/" + `${200 + index}`}
@@ -44,25 +52,82 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
     { key: "col3", name: "Email", fieldName: "Email", minWidth: 50, maxWidth: 100, isResizable: true },
     { key: "col4", name: "Department", fieldName: "Department", minWidth: 50, maxWidth: 100, isResizable: true }
   ]
+  private batchSize: number = 10; // Number of items to fetch in each batch
+  private skipCount: number = 0; // Counter to keep track of skipped items
+  private employeeListRef: React.RefObject<HTMLDivElement> = React.createRef<HTMLDivElement>();
   constructor(props: IEmployeeDirectoryProps) {
     super(props);
     this.state = {
       employees: [],
-      isPanelOpen: false
+      isPanelOpen: false,
+      // searchText: undefined
     }
     this.sp = getSP(props.context);
   }
   public async componentDidMount(): Promise<void> {
     const employees = await this.getEmployeeDetails();
     this.setState({ employees: employees });
-
+    // Adding scroll event listener to the employee list
+    if (this.employeeListRef.current) {
+      this.employeeListRef.current.addEventListener('scroll', this.handleNativeScroll);
+    }
+  }
+  componentDidUpdate(prevProps: Readonly<IEmployeeDirectoryProps>, prevState: Readonly<IEmployeeState>, snapshot?: any): void {
+    if (prevState.filterOptions !== this.state.filterOptions) {
+      console.log("Search Text Changed", this.state.filterOptions, typeof this.state.filterOptions);
+      // this.filterEmployees();
+    }
+  }
+  componentWillUnmount(): void {
+    // Removing scroll event listener to prevent memory leaks
+    if (this.employeeListRef.current) {
+      this.employeeListRef.current.removeEventListener('scroll', this.handleNativeScroll);
+    }
+  }
+  private handleNativeScroll = async (event: Event): Promise<void> => {
+    const target = event.target as HTMLDivElement;
+    // Check if the user has scrolled to the bottom of the list
+    console.log("Scroll Event",target.scrollHeight - target.scrollTop,target.clientHeight, target.scrollHeight, target.scrollTop);
+    if (target.scrollHeight - target.scrollTop <= target.clientHeight) {
+      // Load more employees
+      this.skipCount += this.batchSize; // Increment skip count
+      const newEmployees = await this.getEmployeeDetails();
+      this.setState((prevState) => ({
+        employees: [...prevState.employees, ...newEmployees]
+      }));
+    }
   }
   private getEmployeeDetails = async (): Promise<IEmployeeItem[]> => {
     //const employees:IEmployeeItem[] = 
-    const items = await this.sp.web.lists.getByTitle('Employees').items
-      .select("Id", "Title", "Email", "Department", "Designation", "PhotoURL")
-      .top(100)();
-    //console.log("items",items)
+    const {filterOptions} = this.state;
+    let items: IEmployeeItem[] = [];
+    if(filterOptions && filterOptions.length > 0){
+      // console.log("Filter Options", filterOptions);
+      const filterQuery = filterOptions.filter(value => value).map(option => option.value).join(' and ');
+      items = await this
+                        .sp
+                        .web
+                        .lists
+                        .getByTitle('Employees')
+                        .items
+                        .select("Id", "Title", "Email", "Department", "Designation", "PhotoURL")
+                        .filter(filterQuery)
+                        .orderBy("Id", true)
+                        .skip(this.skipCount)
+                        .top(this.batchSize)(); // Fetching only the specified batch size
+          
+    }else{
+      items = await this
+                        .sp
+                        .web
+                        .lists
+                        .getByTitle('Employees')
+                        .items
+                        .select("Id", "Title", "Email", "Department", "Designation", "PhotoURL")
+                        .orderBy("Id", true)
+                        .skip(this.skipCount)
+                        .top(this.batchSize)() // Fetching only the specified batch size
+    }
 
     return items
   }
@@ -72,6 +137,7 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
   private closePanel = (): void => {
     this.setState({ isPanelOpen: false });
   }
+  
   public render(): React.ReactElement<IEmployeeDirectoryProps> {
 
     // const {
@@ -82,7 +148,7 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
     //   // userDisplayName,
     //   context
     // } = this.props;
-    const { employees, isPanelOpen } = this.state;
+    const { employees, isPanelOpen} = this.state;
     // console.log("this",context,employees)
     return (
       <div>
@@ -132,18 +198,49 @@ export default class EmployeeDirectory extends React.Component<IEmployeeDirector
             />
             <SearchBox
               placeholder="Search Employee"
-              onSearch={(value: string) => { }}
-              onChange={(ev, value) => { }}
+              onSearch={debounce((newValue:string) => {
+                  console.log("onSearch Text", newValue); 
+                  this.setState((prevState) => ({
+                    // searchText: newValue == null || newValue == "" ? undefined : newValue,
+                    filterOptions: [
+                      ...(prevState.filterOptions || []),
+                      { 
+                        key: 'Title',
+                        value: newValue == null || newValue == "" ? undefined : `startswith(Title,'${newValue}')`,
+                        // type: 'text'
+                      }
+                    ]
+                  }));
+                }, 1000)
+              }
+              onChange={debounce((ev, newValue) => {
+                    console.log("onChange Text", newValue); 
+                    this.setState((prevState => ({ 
+                      // searchText: newValue ==null || newValue == ""?undefined:newValue 
+                      filterOptions: [
+                        ...(prevState.filterOptions || []),
+                        { 
+                          key: 'Title',
+                          value: newValue == null || newValue == "" ? undefined : `startswith(Title,'${newValue}')`,
+                          // type: 'text'
+                        }
+                      ]
+                    })
+                  ))
+                }, 1000)
+              }
               styles={{ root: { width: 200 } }}
               ariaLabel="Search Employee"
               iconProps={{ iconName: 'Search' }}
               clearButtonProps={{ ariaLabel: 'Clear search' }}
-              onClear={(ev) => { }}
+              // onClear={(ev) => {
+              //   console.log("onClear Text", ev); this.setState({ searchText: undefined })
+              // }}
               underlined={true}
             />
           </div>
         </div>
-        <div style={{ height: '500px', overflow: 'auto' }}>
+        <div ref={this.employeeListRef} style={{ height: '500px', overflow: 'auto' }}>
           <DetailsList
             items={employees}
             columns={this.empTableColumns}
